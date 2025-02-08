@@ -1,33 +1,34 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from transformers import AutoTokenizer,AutoModelForQuestionAnswering
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 
-tokenizer=AutoTokenizer.from_pretrained("Intel/dynamic_tinybert")
-model=AutoModelForQuestionAnswering.from_pretrained("Intel/dynamic_tinybert")
+# Load Babelscape/rebel-large
+tokenizer = AutoTokenizer.from_pretrained("Babelscape/rebel-large")
+model = AutoModelForSeq2SeqLM.from_pretrained("Babelscape/rebel-large")
 
-app=FastAPI()
+app = FastAPI()
 
-class QARequest(BaseModel):
-    context:str
-    question:str
+class TextRequest(BaseModel):
+    text: str  # Input text for the model
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Welcome to the Babelscape/rebel-large API!",
+        "usage": "Send a POST request to /predict with 'text' in JSON format.",
+        "example": {
+            "text": "Elon Musk is the CEO of Tesla."
+        }
+    }
 
 @app.post("/predict")
-async def predict(reqeust:QARequest):
-    inputs=tokenizer(reqeust.question,reqeust.context,return_tensors="pt")
+async def predict(request: TextRequest):
+    inputs = tokenizer(request.text, return_tensors="pt")
 
     with torch.no_grad():
-        outputs=model(**inputs)
-    
-    start_scores=outputs.start_logits
-    end_scores=outputs.end_logits
+        outputs = model.generate(**inputs)
 
-    start_idx=torch.argmax(start_scores)
-    end_idx=torch.argmax(end_scores)+1
+    decoded_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    answer=tokenizer.convert_tokens_to_string(
-        tokenizer.convert_ids_to_tokens(inputs["input_ids"][0][start_idx:end_idx])
-
-    )
-    return {"answer":answer}
-
+    return {"generated_text": decoded_text}
